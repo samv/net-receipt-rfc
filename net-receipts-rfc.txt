@@ -1,0 +1,402 @@
+Net Receipts -- NRP/0.1
+=======================
+
+This protocol is designed to provide, on demand, a certificate that
+can be used to prove that a data transfer happened.
+
+
+Introduction
+------------
+
+Copyright enforcement agengies frequently collect lists of
+participant addresses from Peer to Peer filesharing sites, and use
+these alone as a basis for a copyright violation complaint.
+
+This system has been shown to be open for abuse, with groups using the
+simplicity of the method to frame innocent users and even printers.
+
+This protocol outlines a process by which violations of copyright law
+carried out over the internet that a node was party to can be
+captured, and non-refutable evidence gathered from their network
+providers that verify the captured traffic as authentic.
+
+
+Compatibility and Extensions
+----------------------------
+
+The NRP/0.1 should be considered an experimental protocol.  Future
+versions of NTP may add new optional features to the protocol.
+
+
+Audience
+--------
+
+This RFC is aimed at developers who wish to implement NTP for a
+particular platform.  Also, systems administrators and architects may
+use this docuemnt to fully understand the implications of implementing
+NRP.
+
+
+Terminology
+-----------
+
+netblock::
+
+   the netblock is the smallest globally routable allocated block that
+   a given address is on, as allocated by IANA and as can be derived
+   from using the WHOIS service on whois.arin.net and other regional
+   providers.
+
+ISP::
+
+   A company or other entity that owns or manages a globally routable
+   netblock.
+
+stream protocol::
+
+   A protocol which represents a uni- or bi-directional sequence of
+   data.  An entire capture of a strem can be proven to be authentic
+   using a single cryptographic checksum for each direction.
+
+packet protocol::
+
+   A protocol which represents a uni- or bi-directional sequence of
+   data.  An entire capture of a strem can be proven to be authentic
+   using a single cryptographic checksum for each direction.
+
+WHOIS::
+   
+   See the relevant RFC (FIXME)
+
+
+Overall Operation
+-----------------
+
+First, netblock owners list on the netblock WHOIS info page, as
+returned via WHOIS from ARIN and other delegated authorities, the
+address of their NRP server for that netblock.  The server may be
+specified as a DNS name, or an IP address which may or may not be
+allocated from the same netblock.
+
+Clients which wish to obtain a receipt for their activity must find
+this address via WHOIS queries to the relevant IP allocation
+authority.  Each authority will have a standard form for presentation
+of this information as is standard practice.
+
+An SSL connection is established to this address on a well known port.
+The client presents a certificate which can be verified, to help
+reduce frivilous requests.  This is different to typical SSL
+configurations which allow uncertified clients.  An address and
+protocol filter is passed to the NRP server, specifying which
+address(es) on the netblock the NRP server is to receive receipts for.
+There is an implicit, compulsary filter which matches only the single
+address of the client.  Connections which can be confirmed to
+originate from the IP address of the NRP server for the originating
+block may override this filter to include other addresses on that
+netblock.
+
+Once approval for the receipting has been received, the network
+operator collects data from stream protocols, collecting
+cryptographically strong checksums for streams in both directions.
+Non-stream protocols, such as UDP, IPSec or unknown protocols over IP
+are treated separately, with a variety of other checksumming methods
+that may be used to give statistically significant and in some cases
+complete validation of a sections of a traffic log.
+
+In all instances it is the NRP client which is expected to store all
+of the traffic that they are getting receipts for.  The NRP server is
+merely decoding stream protocols, and producing cryptographic
+checksums of these streams and individual packets from packet
+protocols
+
+The NRP server responds with a digitally signed document which
+contains a record of the activity.  The document is streamed as it is
+created, and the signature appended when the receipt is completed.
+
+
+NRP Protocol
+------------
+
+The NRP protocol is generally line-based.  Commands are a line and
+terminated with an optional ASCII Carriage Return (CR) and a Line Feed
+(LF).
+
+
+Handshake
+~~~~~~~~~
+The service is a TCP service on port number *XXX*.  The protocol
+bootstrap message is:
+
+  NRP 0.1
+
+A connection is made and the STARTTLS command issued;
+
+  starttls
+
+The server responds with:
+
+  ok
+
+SSL communication handshake is immediately started.
+
+If the server is overloaded or another fault or policy situation has
+forbidden the service, the server responds with
+
+  error
+
+And closes connection.
+
+After the SSL handshake is complete and certificates exchanged, the
+server notifies the client of the success of this using a response of
+either:
+
+  ssl cert ok
+
+Or:
+
+  ssl cert fail
+
+Any of these responses MAY be followed by a space, an octothorpe (#)
+and a description of the condition suitable for display to the NRP
+client operator.  Error conditions SHOULD contain a message helpful to
+diagnosis of the situation.
+
+
+Filter command
+~~~~~~~~~~~~~~
+
+After the connection is made and identity established, the next part
+of the exchange is a series of commands to specify a traffic filter.
+
+The terms for this are similar to the classic `tcpdump` program.
+
+  host hostname
+  src host hostname and src port 80
+  ( src host hostname or src host otherhost )
+
+The command is:
+
+  filter host 1.2.3.4
+  filter proto tcp and src host 1.3.5.6 and src port 1234
+
+Response may be:
+
+  ok
+
+Or one of the following error conditions:
+
+  error
+
+Means that the form of the 'filter' command was wrong; it failed to
+parse properly.
+
+  too complex
+
+Means that the expression was too complicated for the NRP server;
+specify a simpler filter.
+
+  too wide
+
+The expression must specify a network address or range on the netblock
+to capture.  This response could also mean that the network range for
+receipting was too large, or further filters are required by this NRP
+server.
+
+  not party
+
+This router does not believe that you have the right to ask for that
+traffic, because you are not a party to it, or because this ISP was
+not a party to it either.
+
+
+Hash command
+~~~~~~~~~~~~
+
+NRP clients may specify their preference of hash format using the
+following command:
+
+  hash format,format,...
+
+The server responds with a similar list, which is the formats
+requested that ther server supports.  The first on the list is the one
+that the server will use for the response.
+
+  hash format,format,...
+
+Servers MAY ignore the request, and default to any of the SHA1,
+SHA224, SHA256, SHA384 or SHA512 digest formats.
+
+
+Begin command
+~~~~~~~~~~~~~
+
+The capture is initiated with the `begin` command
+
+  begin
+
+The NRP server response is a PGP signed document, so the first lines
+returned will be a PGP bootstrap message:
+
+  -----BEGIN PGP MESSAGE-----
+  Hash: SHA1
+
+All of the server responses, up to the signature, form part of the
+signed content.  The signature authenticates the content:
+
+  -----BEGIN PGP SIGNATURE-----
+  Version: GnuPG v1.4.6 (GNU/Linux)
+  
+  iEYEARECAAYFAkm7XqAACgkQ/AZAiGayWEMAwgCgwTpn4p517pk7nRNVISHiijv1
+  B28An1vDYaP5dIf/0lY20EkC2HKDwsW3
+  =Hrkr
+  -----END PGP SIGNATURE-----
+
+
+Finishing the receipt
+~~~~~~~~~~~~~~~~~~~~~
+
+The receipt required may be finalised by:
+
+* sending the command `quit`
++
+* shutting down the client's outbound socket
+
+Upon receiving either of these conditions, the server should emit any
+stream receipts it has yet to log and produce and emit the digital
+signature.  No more than 4 kilobytes of new receipts should be sent
+after the intention to quit has been registered.
+
+
+Response Documents
+------------------
+
+Information that checksums traffic matching the specified filter will
+appear in the generated document.
+
+Each 'line' of response starts with a flush-left keyword, then a
+series of field names followed by values, delimited by whitespace.
+Currently no values can contain whitespace.
+
+Field formats
+~~~~~~~~~~~~~~
+
+SHA digests always appear in BASE64 encoded form.  So, for a SHA1
+digest there are 27 letters, and SHA256 is 43.  Other checksum formats
+may be BASE64 encoded or encoded in some custom form.
+
+Network addresses are listed in numerical form, without conversion to
+a host name such as by reverse lookup.
+
+IP addresses are normally also listed with the corresponding port
+number.  So, IPv6 addresses must be enclosed in square brackets `[]`
+to delimit them from the port.  For IP protocols that do not use
+ports, eg ICMP, this field may be absent.
+
+
+Stream traffic records
+~~~~~~~~~~~~~~~~~~~~~~
+
+A stream is identified by listing its source and destination IP
+addresses, its protocol, and the length and sum of the content.
+
+  stream
+    side server
+    src ADDR:PORT
+    dst ADDR:PORT
+    proto tcp
+    size 3
+    digest C+7Hteo/D9vJXQ3UfzxbwnXaijM
+
+`side`::
+  This is either `server`, or `client`.  If it is `server`, then this
+  stream corresponds to the side that answered the TCP connection.  If
+  it is `client` then it is the calling side.  If absent, it means
+  that the information was not available; perhaps the receipt was set
+  up after the connection was established.
+
+`src`::
+  This stream corresponds to packets sent from the address indicated
+  by the argument.
+
+`dst`::
+  This stream corresponds to packets sent to the address indicated by
+  the argument.
+
+`proto`::
+  This is a well known protocol name, such as `tcp` or `sctp`.
+
+`size`::
+  The total length of the digested region of the stream.
+
+`offset`::
+  If this stream was noted before, the number of bytes indicated by
+  this value from the beginning were not included in the digest
+  calculation.
+
+
+Packet traffic records
+~~~~~~~~~~~~~~~~~~~~~~
+
+Non-stream traffic must be digested in two ways; these compliment each
+other.
+
+* Randomly selected packets digested on their own, excluding the
+  header.
+
+* Blocks of packets are collected and their contents excluding the
+  header digested as a group.  The values of the 'identification' and
+  'total length' packet fields are shown in the response document to
+  assist in reconstructing the complete digest.  Fragmented packets
+  are either reassembled or excluded for digest calculation.
+
+Depending on the nature and behaviour of the traffic being receipted,
+one or the other of the above is likely to be useful in proving
+recorded traffic as authentic.
+
+Packet traffic records for individual packets appear as
+
+  packet
+    src HOST:PORT
+    dst HOST:PORT
+    proto udp
+    size 54
+    digest VMHAvGe/alZa///E4E9FdmCWsVgm
+
+Fields of this message are as for `stream` messages.  The `size` is
+for the packet contents, not the header.  It corresponds exactly to
+the length of the data which was digested.
+
+Packet traffic records for groups of packets appear as
+
+  packet
+    src HOST:PORT
+    dst HOST:PORT
+    proto udp
+    ident ab124123ba12b235
+    length 023502500212022f
+    size 2247
+    digest zR66GMRpSQtiCijdT0n4G3MN0JI
+
+The fields are interpreted as follows;
+
+`ident`::
+   This is a string containing Hexadecimal digits.  Every sequence of
+   four of these corresponds to the 'Identification' header of the
+   fully assembled IP packet included in the digest.
+
+`length`::
+   This is a string containing Hexadecimal digits.  Every sequence of
+   four of these corresponds to the 'Length' header of the fully
+   assembled IP packet included in the digest.
+
+`size`::
+   This is the total length of the IP payloads, not including the
+   headers.  This corresponds exactly to the length of the data which
+   was digested.
+
+`digest`::
+   The digest computed by feeding the payload of the packets into the
+   digest algorithm in the order listed in the `ident` field.
+
+
+
