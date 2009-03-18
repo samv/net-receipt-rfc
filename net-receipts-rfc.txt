@@ -25,13 +25,13 @@ Compatibility and Extensions
 ----------------------------
 
 The NRP/0.1 should be considered an experimental protocol.  Future
-versions of NTP may add new optional features to the protocol.
+versions of NRP may add new optional features to the protocol.
 
 
 Audience
 --------
 
-This RFC is aimed at developers who wish to implement NTP for a
+This RFC is aimed at developers who wish to implement NRP for a
 particular platform.  Also, systems administrators and architects may
 use this docuemnt to fully understand the implications of implementing
 NRP.
